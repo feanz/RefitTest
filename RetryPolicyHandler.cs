@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
@@ -10,7 +9,8 @@ namespace Bede.RefitTest
 {
     public class RetryPolicyHandler : DelegatingHandler
     {
-        private readonly bool _retryPolicyEnabled;
+        private readonly LoggingSettings _loggingSettings;
+        private readonly RetryPolicySettings _settings;
 
         private static readonly List<HttpStatusCode> TransientStatusCodes = new List<HttpStatusCode>
         {
@@ -21,40 +21,42 @@ namespace Bede.RefitTest
 
         private readonly Policy _retryPolicy;
 
-        public RetryPolicyHandler(bool retryPolicyEnabled, IEnumerable<TimeSpan> retryPolicyIntervals, HttpMessageHandler inner) 
+        public RetryPolicyHandler(LoggingSettings loggingSettings, RetryPolicySettings settings, HttpMessageHandler inner) 
             : base(inner)
         {
-            _retryPolicyEnabled = retryPolicyEnabled;
+            _loggingSettings = loggingSettings;
+            _settings = settings;
             _retryPolicy = Policy
             .Handle<TransientHttpRequestException>()
-            .WaitAndRetryAsync(retryPolicyIntervals);
+            .WaitAndRetryAsync(settings.RetryPolicyIntervals);
         }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken cancellationToken)
         {
-            Console.WriteLine($"Retry handler: {request.RequestUri}");
-
             HttpResponseMessage responseMessage;
-            if (_retryPolicyEnabled)
+            if (_settings.RetryPolicyEnabled)
             {
                 responseMessage = await _retryPolicy.ExecuteAsync(async () =>
                 {
-                    Console.WriteLine($"Retry handler calling: {request.RequestUri}");
+                    _loggingSettings.LogInformation(LogCategories.RetryPolicy, $"Retry handler calling: {request.RequestUri}");
 
-                    var result = await base.SendAsync(request, cancellationToken);
+                    var response = await base.SendAsync(request, cancellationToken);
 
-                    if (TransientStatusCodes.Contains(result.StatusCode))
-                        throw new TransientHttpRequestException("Transient http request exception", result.StatusCode);
+                    if (TransientStatusCodes.Contains(response.StatusCode))
+                    {
+                        var exception = new TransientHttpRequestException(
+                            $"Transient http request exception from calling {request.RequestUri} recieved a response status code {response.StatusCode}", response.StatusCode);
+                        _loggingSettings.LogError(LogCategories.RetryPolicy, exception, exception.Message);
+                        throw exception;
+                    }
 
-                    return result;
+                    return response;
                 });
             }
             else
             {
                 responseMessage = await base.SendAsync(request, cancellationToken);
             }
-
-            Console.WriteLine($"Retry handler response: {responseMessage.StatusCode}");
 
             return responseMessage;
         }

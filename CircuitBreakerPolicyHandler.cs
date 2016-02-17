@@ -8,38 +8,48 @@ namespace Bede.RefitTest
 {
     public class CircuitBreakerPolicyHandler : DelegatingHandler
     {
+        private readonly LoggingSettings _loggingSettings;
         private readonly bool _circuitBreakerEnabled;
 
         private readonly Policy _circuitBreaker;
 
-        public CircuitBreakerPolicyHandler(bool circuitBreakerEnabled, int exceptionAllowedBeforeCircuitBroken, int durationOfCircuitBreakMiliseconds, HttpMessageHandler inner) 
+        public CircuitBreakerPolicyHandler(LoggingSettings loggingSettings, CircuitBreakerSettings settings, HttpMessageHandler inner)
             : base(inner)
         {
-            _circuitBreakerEnabled = circuitBreakerEnabled;
-            
+            _loggingSettings = loggingSettings;
+            _circuitBreakerEnabled = settings.CircuitBreakerEnabled;
 
             _circuitBreaker = Policy
             .Handle<Exception>()
-            .CircuitBreakerAsync(exceptionAllowedBeforeCircuitBroken, TimeSpan.FromMilliseconds(durationOfCircuitBreakMiliseconds));
+            .CircuitBreakerAsync(settings.ExceptionAllowedBeforeCircuitBroken, TimeSpan.FromMilliseconds(settings.DurationOfCircuitBreakMiliseconds));
         }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            Console.WriteLine($"Circuit breaker handler: {request.RequestUri}");
-
             HttpResponseMessage responseMessage;
             if (_circuitBreakerEnabled)
             {
-                responseMessage =
-                    await _circuitBreaker.ExecuteAsync(async () => await base.SendAsync(request, cancellationToken));
+                responseMessage = await _circuitBreaker.ExecuteAsync(async () =>
+                    {
+                        _loggingSettings.LogInformation(LogCategories.CircuitBreaker, "Circuit breaker handler calling " + request.RequestUri);
+
+                        try
+                        {
+                            return await base.SendAsync(request, cancellationToken);
+                        }
+                        catch (Exception ex)
+                        {
+                            _loggingSettings.LogError(LogCategories.CircuitBreaker, ex,
+                                "Circuit breaker caught exception");
+                            throw;
+                        }
+                    });
             }
             else
             {
                 responseMessage = await base.SendAsync(request, cancellationToken);
             }
-
-            Console.WriteLine($"Circuit breaker response: {responseMessage.StatusCode}");
 
             return responseMessage;
         }

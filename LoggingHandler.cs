@@ -7,26 +7,34 @@ namespace Bede.RefitTest
 {
     public class LoggingHandler : DelegatingHandler
     {
-        private readonly bool _loggingEnabled;
+        private readonly LoggingSettings _loggingSettings;
 
-        public LoggingHandler(bool loggingEnabled, HttpMessageHandler inner)
+        public LoggingHandler(LoggingSettings loggingSettings,
+            HttpMessageHandler inner)
             : base(inner)
         {
-            _loggingEnabled = loggingEnabled;
+            _loggingSettings = loggingSettings;
         }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            if(_loggingEnabled)
-                Console.WriteLine($"Request: {request.RequestUri}");
+            _loggingSettings.LogInformation.Invoke(LogCategories.RequestResponse, $"Client REQUEST: {request.RequestUri}");
 
-            var foo = await base.SendAsync(request, cancellationToken);
+            HttpResponseMessage httpResponseMessage;
+            try
+            {
+                httpResponseMessage = await base.SendAsync(request, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _loggingSettings.LogError.Invoke(LogCategories.RequestResponse, ex, ex.Message);
+                throw;
+            }
 
-            if (_loggingEnabled)
-                Console.WriteLine($"Response: {foo.StatusCode}");
+            _loggingSettings.LogInformation.Invoke(LogCategories.RequestResponse, $"Client Response: {httpResponseMessage.StatusCode}"); 
 
-            return foo;
+            return httpResponseMessage;
         }
     }
 }

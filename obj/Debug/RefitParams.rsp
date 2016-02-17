@@ -1,9 +1,14 @@
 CircuitBreakerPolicyHandler.cs
+CircuitBreakerSettings.cs
+DefaultRefitSettings.cs
+LogCategories.cs
 LoggingHandler.cs
+LoggingSettings.cs
 NoOpHandler.cs
 Program.cs
 Properties\AssemblyInfo.cs
 RetryPolicyHandler.cs
+RetryPolicySettings.cs
 StringExtensions.cs
 TransientHttpRequestException.cs
 C:\Users\richa_000\AppData\Local\Temp\.NETFramework,Version=v4.6.1.AssemblyAttributes.cs
